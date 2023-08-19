@@ -20,7 +20,7 @@ import hou
 
 logging.basicConfig(format='%(asctime)s %(message)s',
                     datefmt='%H:%M:%S',
-                    level=logging.INFO)
+                    level=logging.DEBUG)
 
 #class Element(object):
 #    name : str
@@ -109,7 +109,7 @@ class ObjReader(object):
         # a line
         line = None
         while line is None:
-            line = self.f.next()
+            line = next(self.f)
 
             # This logic is for tracking whether there is "double" geometry
             # within the obj file which is the case for at least v1.1 of the
@@ -118,7 +118,7 @@ class ObjReader(object):
                 if self.current_hash is None:
                     self.current_hash = hashlib.md5()
                     self.vtx_sections += 1
-                self.current_hash.update(line)
+                self.current_hash.update(line.encode('utf-8'))
             else:
                 if self.current_hash is not None:
                     hash_val = self.current_hash.hexdigest()
@@ -283,7 +283,7 @@ class ArchivePrims(InstancedPrims):
                 diskprim.setIntrinsicValue('unexpandedfilename', bgeo)
                 # Now we are going to pack it so we can copy it
                 packed_geo = pack_geo(bgeo_gdp)
-                for name,xform in archive_data[obj].iteritems():
+                for name,xform in archive_data[obj].items():
                     logging.debug('built %s', name)
                     for prim in packed_geo.prims():
                         prim.setAttribValue('name', name)
@@ -294,7 +294,7 @@ class ArchivePrims(InstancedPrims):
                 # by the all_geo
                 # bgeo_gdp.clear()
             else:
-                for name,xform in archive_data[obj].iteritems():
+                for name,xform in archive_data[obj].items():
                     logging.debug('built %s', name)
                     diskprim = all_geo.createPacked('PackedDisk')
                     diskprim.setIntrinsicValue('unexpandedfilename', bgeo)
@@ -353,9 +353,9 @@ class ElementPrims(InstancedPrims):
         element = Element(element_json)
         element_data = self.load_json_file()
         all_geo = hou.Geometry()
-        for variant, elements in element_data.iteritems():
+        for variant, elements in element_data.items():
             variant_geo = element.build_element_geo(variant)
-            for variant_name, xform in elements.iteritems():
+            for variant_name, xform in elements.items():
                 logging.debug('Copied element %s', variant)
                 for prim in variant_geo.prims():
                     prim.setAttribValue('name', variant_name)
@@ -433,7 +433,7 @@ class Element(object):
                 mat_node.node(mat_node_name).destroy()
             logging.info('Creating %s material', mat_node_name)
             disney_mat = mat_node.createNode('disney_material', node_name=mat_node_name)
-            for parm,vals in self.material_data[mat_name].iteritems():
+            for parm,vals in self.material_data[mat_name].items():
                 if parm in ('assignment',):
                     continue
                 # This is needed because sometimes baseColor is size 3 and sometimes size 4
@@ -466,7 +466,7 @@ class Element(object):
     def build_instanceprims(self, instance_dict):
         logging.info('Handling instancedPrimitiveJsonFiles')
         json_geo = hou.Geometry()
-        for name, instance_prim in instance_dict.iteritems():
+        for name, instance_prim in instance_dict.items():
             logging.info('instancedPrimitiveJsonFiles: %s', name)
             if instance_prim['type'] == 'archive':
                 json_prim = ArchivePrims(self, name, instance_prim)
@@ -534,7 +534,7 @@ class Element(object):
         out_geo.merge(geo)
 
         # Build instancedCopies
-        for name, instance_dict in self.json_data.get('instancedCopies', {}).iteritems():
+        for name, instance_dict in self.json_data.get('instancedCopies', {}).items():
             logging.info('Creating instance copy for %s', name)
             if ( not instance_dict.get('instancedPrimitiveJsonFiles') and
                  not instance_dict.get('geomObjFile') ):
@@ -627,9 +627,9 @@ def convert_tex(tex_path):
     if not os.path.exists(os.path.dirname(rat_path)):
         os.makedirs(os.path.dirname(rat_path))
     logging.info('Converting %s to a rat texture', clean_tex_path)
-    iconvert_path = os.path.expandvars('$HFS/bin/iconvert')
+    iconvert_path = os.path.expandvars('$HFS/bin/iconvert.exe')
     if not os.path.exists(iconvert_path):
-        raise OSError('Could find $HFS/bin/iconvert')
+        raise OSError('Could find $HFS/bin/iconvert.exe')
     proc = subprocess.Popen([iconvert_path, clean_tex_path, rat_path])
     stdout,stderr = proc.communicate()
     if proc.returncode != 0:
@@ -641,7 +641,7 @@ def build_light(json_file):
     with open(json_file, 'r') as f:
         json_data = json.load(f)
     obj_node = hou.node('/obj')
-    for light,light_data in json_data.iteritems():
+    for light,light_data in json_data.items():
         logging.info('Building %s light: %s', light_data['type'], light)
         linear_clr = [ pow(x, 2.2) for x in light_data['color'][0:3] ]
         if light_data['type'] == 'quad':
@@ -693,11 +693,9 @@ def create_rop(camera):
 
 @contextlib.contextmanager
 def make_tempfile():
-    tmpf = tempfile.NamedTemporaryFile(suffix='.obj', delete=False)
+    tmpf = tempfile.NamedTemporaryFile(suffix='.obj', delete=False, mode='w')
     try:
         yield tmpf
-    except:
-        raise
     finally:
         os.remove(tmpf.name)
 
